@@ -2,9 +2,51 @@
   "name": "mcp-blueprint-hud",
   "version": "1.0.0",
   "description": "Blueprint HUD — architecture-aware MCP inspector with an Intent Workbench for change impact mapping",
-  "main": "server.js",
+  "displayName": "Blueprint HUD",
+  "main": "./extension.js",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:blueprintHud.sidebar",
+    "onCommand:blueprintHud.focus",
+    "onCommand:blueprintHud.openDashboard"
+  ],
   "scripts": {
     "start": "node server.js"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "blueprintHud",
+          "title": "Blueprint HUD",
+          "icon": "media/blueprint-hud-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "blueprintHud": [
+        {
+          "type": "webview",
+          "id": "blueprintHud.sidebar",
+          "name": "Intent Workbench"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "blueprintHud.focus",
+        "title": "Blueprint HUD: Focus Sidebar"
+      },
+      {
+        "command": "blueprintHud.openDashboard",
+        "title": "Blueprint HUD: Open Local Dashboard"
+      }
+    ]
   },
   "dependencies": {
     "express": "^4.19.2",

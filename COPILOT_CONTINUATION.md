@@ -11,8 +11,8 @@ If this chat gets disconnected, send this file back to Copilot and say:
 Blueprint HUD is the first wedge of the "Living Blueprint" idea:
 
 - **Current wedge:** intent-to-impact mapping
-- **Current form:** local web dashboard with side-panel-style UX
-- **Future form:** VS Code / Cursor side panel extension backed by the same analysis engine
+- **Current form:** VS Code side panel extension plus local web dashboard prototype
+- **Next target:** broaden from VS Code to Cursor/Copilot-compatible surfaces backed by the same analysis engine
 
 It helps a developer describe a change in plain English and immediately see:
 
@@ -25,6 +25,7 @@ It helps a developer describe a change in plain English and immediately see:
 
 - The repo is a clean public-facing copy of the AgentXRay prototype.
 - The dashboard already has an **Intent Workbench** in the right panel.
+- The repo now also has a **real VS Code activity-bar side panel extension** powered by `extension.js`.
 - The backend exposes `POST /__api/impact`.
 - The analysis engine lives in `impact-engine.js`.
 - The UI lives in `public/index.html`, `public/app.js`, and `public/style.css`.
@@ -33,6 +34,7 @@ It helps a developer describe a change in plain English and immediately see:
 ## Important files
 
 - `server.js` — Express proxy server and `/__api/impact` endpoint
+- `extension.js` — VS Code sidebar webview provider and workspace analysis wiring
 - `impact-engine.js` — repo scan + heuristic impact analysis
 - `auth-tracker.js` — auth flow state tracking
 - `public/index.html` — dashboard structure
@@ -42,17 +44,17 @@ It helps a developer describe a change in plain English and immediately see:
 
 ## Known gaps
 
-1. This is **not yet** a true VS Code or Cursor extension.
+1. This is now a **true VS Code extension**, but not yet a Cursor or Copilot editor integration.
 2. The impact engine is heuristic and should get smarter with:
    - import graph weighting
    - route-to-file correlation
    - runtime evidence from real traffic
    - confidence tuning to reduce noisy matches
-3. README still describes the current web dashboard more than the future editor extension.
+3. The extension currently analyzes the **first workspace folder** and does not yet model multi-root workspaces.
 
 ## Best next steps
 
-1. Create a **VS Code extension webview** that hosts the Intent Workbench UI.
+1. Add **Cursor / Copilot-compatible editor integration** or an MCP-backed bridge for the same panel experience.
 2. Move the impact engine behind an MCP-friendly interface or extension-local service.
 3. Improve ranking so auth changes surface `auth-tracker.js` and server routes even more reliably.
 4. Add saved analysis history and clickable navigation into affected files.
@@ -60,4 +62,4 @@ It helps a developer describe a change in plain English and immediately see:
 
 ## Suggested prompt to resume work
 
-> Continue Blueprint HUD. Start by turning the current Intent Workbench into a real VS Code side panel extension without losing the existing dashboard prototype.
+> Continue Blueprint HUD. The VS Code side panel exists now. Next, improve impact accuracy and make the same workbench usable in Cursor or Copilot-style editor surfaces.

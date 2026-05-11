@@ -2,6 +2,8 @@
 
 Blueprint HUD is an architecture-aware MCP inspector with an **Intent Workbench** that maps likely ripple effects before you change code.
 
+It now runs as a **real VS Code side panel extension** and still includes the original local dashboard prototype.
+
 ![Blueprint HUD dashboard](./media/dashboard.png)
 
 ## The Problem
@@ -19,6 +21,27 @@ It also adds an **Intent Workbench**: describe a change or a bug in plain Englis
 ---
 
 ## Quick Start
+
+### VS Code extension panel
+
+1. Open this repo in VS Code.
+2. Run:
+
+```bash
+npm install
+```
+
+3. Press `F5` and choose **Run Blueprint HUD Extension**.
+4. In the Extension Development Host, click the **Blueprint HUD** icon in the activity bar.
+5. Enter a change request like:
+
+```text
+Add a login requirement to the dashboard
+```
+
+The extension analyzes the **currently opened workspace** and shows likely file impact, risk signals, and a suggested execution order. Click a file in the results to open it.
+
+### Local dashboard prototype
 
 ### 1. Install
 
@@ -92,6 +115,12 @@ Blueprint HUD responds with:
 - **Runtime surfaces** to verify, like auth challenge or SSE transport paths
 - **Risk signals** with explicit confidence instead of false certainty
 - A **suggested execution order** so the change can be made safely
+
+### VS Code sidebar
+The editor-native extension panel provides the same Intent Workbench flow directly in the activity bar:
+- Analyze the **current workspace**
+- Open impacted files directly from the result list
+- Keep the dashboard prototype available for transport/auth debugging
 
 ---
 
