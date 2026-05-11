@@ -6,6 +6,8 @@ If this chat gets disconnected, send this file back to Copilot and say:
 
 ## What this project is
 
+**Repository:** https://github.com/tsldental/mcp-blueprint-hud
+
 Blueprint HUD is the first wedge of the "Living Blueprint" idea:
 
 - **Current wedge:** intent-to-impact mapping
