@@ -53,7 +53,7 @@ const CONCERNS = [
   },
 ];
 
-function analyzeImpact({ intent, repoRoot, trafficLog = [], target }) {
+function analyzeImpact({ intent, repoRoot, trafficLog = [], target, projectGraph = null, cacheStatus = null }) {
   const normalizedIntent = (intent || '').trim();
   if (!normalizedIntent) {
     return {
@@ -69,13 +69,14 @@ function analyzeImpact({ intent, repoRoot, trafficLog = [], target }) {
       runtime: { highConfidence: [], possibleImpact: [], unknowns: [] },
       risks: [],
       plan: [],
-      meta: buildMeta(trafficLog, [], target),
+      guardrails: { bullets: [], promptBlock: '' },
+      meta: buildMeta(trafficLog, { files: [], runtimeSurfaces: [] }, target, cacheStatus),
     };
   }
 
   const tokens = tokenize(normalizedIntent);
   const concerns = detectConcerns(tokens);
-  const snapshot = scanRepo(repoRoot);
+  const snapshot = hydrateProjectGraph(projectGraph || buildProjectGraph(repoRoot));
   const fileCandidates = scoreFiles(snapshot.files, tokens, concerns, snapshot.links);
   const runtimeCandidates = scoreRuntime(snapshot.runtimeSurfaces, trafficLog, tokens, concerns);
 
@@ -84,6 +85,7 @@ function analyzeImpact({ intent, repoRoot, trafficLog = [], target }) {
   const risks = buildRisks(concerns, impacts, runtime, trafficLog);
   const plan = buildPlan(concerns, impacts, runtime);
   const confidenceScore = computeConfidenceScore(snapshot, trafficLog, impacts, runtime, concerns);
+  const guardrails = buildGuardrails(normalizedIntent, concerns, impacts, runtime, risks);
 
   return {
     intent: normalizedIntent,
@@ -98,18 +100,36 @@ function analyzeImpact({ intent, repoRoot, trafficLog = [], target }) {
     runtime,
     risks,
     plan,
-    meta: buildMeta(trafficLog, snapshot.files, target),
+    guardrails,
+    meta: buildMeta(trafficLog, snapshot, target, cacheStatus),
   };
 }
 
-function scanRepo(repoRoot) {
+function buildProjectGraph(repoRoot) {
   const files = [];
   const runtimeSurfaces = [];
   const links = new Map();
 
   walk(repoRoot, repoRoot, files, runtimeSurfaces, links);
 
-  return { files, runtimeSurfaces, links };
+  return {
+    repoRoot,
+    builtAt: new Date().toISOString(),
+    files,
+    runtimeSurfaces,
+    links,
+  };
+}
+
+function hydrateProjectGraph(projectGraph) {
+  return {
+    ...projectGraph,
+    files: Array.isArray(projectGraph.files) ? projectGraph.files : [],
+    runtimeSurfaces: Array.isArray(projectGraph.runtimeSurfaces) ? projectGraph.runtimeSurfaces : [],
+    links: projectGraph.links instanceof Map
+      ? projectGraph.links
+      : new Map(Object.entries(projectGraph.links || {})),
+  };
 }
 
 function walk(root, currentDir, files, runtimeSurfaces, links) {
@@ -310,6 +330,7 @@ function scoreFiles(files, tokens, concerns, links) {
       reason: file.reasons[0],
       details: file.reasons.slice(1),
       related: file.related,
+      zone: scoreToZone(file.score),
     }));
 }
 
@@ -378,6 +399,7 @@ function scoreRuntime(runtimeSurfaces, trafficLog, tokens, concerns) {
       reason: reasons[0] || 'Potential runtime touchpoint',
       details: reasons.slice(1),
       related: [],
+      zone: scoreToZone(score),
     };
   });
 
@@ -390,6 +412,7 @@ function scoreRuntime(runtimeSurfaces, trafficLog, tokens, concerns) {
       reason: 'Authentication work usually changes challenge handling and protected retries',
       details: ['Verify 401 challenge, PRM discovery, and bearer retry sequence'],
       related: [],
+      zone: trafficLog.some(entry => entry.statusCode === 401 || entry.hasToken) ? 'brittle' : 'affected',
     });
   }
 
@@ -402,6 +425,7 @@ function scoreRuntime(runtimeSurfaces, trafficLog, tokens, concerns) {
       reason: 'Performance issues in this project often show up in stream handling and event rendering',
       details: ['Review SSE event volume, repeated rendering, and payload size'],
       related: [],
+      zone: trafficLog.some(entry => entry.isSSE || entry.streaming) ? 'brittle' : 'affected',
     });
   }
 
@@ -494,6 +518,40 @@ function buildPlan(concerns, impacts, runtime) {
   return dedupe(steps).slice(0, 5);
 }
 
+function buildGuardrails(intent, concerns, impacts, runtime, risks) {
+  const bullets = [];
+
+  if (impacts.highConfidence.length) {
+    bullets.push(`Treat ${impacts.highConfidence[0].title} as the primary change surface.`);
+  }
+  if (impacts.highConfidence.length > 1) {
+    bullets.push(`Review adjacent impact on ${impacts.highConfidence.slice(1, 3).map(item => item.title).join(' and ')}.`);
+  }
+  if (runtime.highConfidence.length) {
+    bullets.push(`Preserve runtime behavior around ${runtime.highConfidence[0].title}.`);
+  } else if (runtime.possibleImpact.length) {
+    bullets.push(`Verify runtime behavior around ${runtime.possibleImpact[0].title} before and after changes.`);
+  }
+  if (concerns.length) {
+    bullets.push(`Respect ${concerns.slice(0, 2).map(concern => concern.label.toLowerCase()).join(' and ')} constraints while implementing.`);
+  }
+  if (risks.length) {
+    bullets.push(`Do not ignore ${risks[0].title.toLowerCase()} risk signals.`);
+  }
+
+  return {
+    bullets,
+    promptBlock: bullets.length
+      ? [
+          '[HUD: Architecture Guardrails]',
+          `Intent: ${intent}`,
+          'Constraints:',
+          ...bullets.map(bullet => `- ${bullet}`),
+        ].join('\n')
+      : '',
+  };
+}
+
 function buildHeadline(intent, impacts, runtime) {
   const total = impacts.highConfidence.length + runtime.highConfidence.length;
   if (!total) return `No high-confidence impact map yet for "${intent}".`;
@@ -531,17 +589,27 @@ function confidenceLabel(score) {
   return 'None';
 }
 
-function buildMeta(trafficLog, files, target) {
+function buildMeta(trafficLog, snapshot, target, cacheStatus = null) {
   const routeCount = new Set(trafficLog.map(entry => entry.path).filter(Boolean)).size;
   const rpcCount = new Set(trafficLog.map(entry => entry.rpcMethod).filter(Boolean)).size;
 
   return {
     target,
-    indexedFiles: files.length,
+    indexedFiles: snapshot.files.length,
+    indexedRuntimeSurfaces: snapshot.runtimeSurfaces.length,
     observedRequests: trafficLog.length,
     observedRoutes: routeCount,
     observedRpcMethods: rpcCount,
+    graphBuiltAt: snapshot.builtAt || null,
+    cacheSource: cacheStatus?.source || null,
+    cacheUpdatedAt: cacheStatus?.updatedAt || null,
   };
+}
+
+function scoreToZone(score) {
+  if (score >= 70) return 'brittle';
+  if (score >= 40) return 'affected';
+  return 'watch';
 }
 
 function tokenize(value) {
@@ -575,4 +643,5 @@ function dedupeBy(values, selector) {
 
 module.exports = {
   analyzeImpact,
+  buildProjectGraph,
 };

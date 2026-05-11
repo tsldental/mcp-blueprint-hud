@@ -4,6 +4,11 @@ Blueprint HUD is an architecture-aware MCP inspector with an **Intent Workbench*
 
 It now runs as a **real VS Code side panel extension** and still includes the original local dashboard prototype.
 
+The newest layer adds:
+- a **persisted local project map**
+- optional **runtime overlays** from observed traffic
+- a copyable **Prompt Guardrails** block for injecting architectural constraints into AI prompts
+
 ![Blueprint HUD dashboard](./media/dashboard.png)
 
 ## The Problem
@@ -39,7 +44,9 @@ npm install
 Add a login requirement to the dashboard
 ```
 
-The extension analyzes the **currently opened workspace** and shows likely file impact, risk signals, and a suggested execution order. Click a file in the results to open it.
+The extension analyzes the **currently opened workspace** and shows likely file impact, runtime pressure, risk signals, and a suggested execution order. Click a file in the results to open it.
+
+Blueprint HUD also keeps a local map on disk and refreshes it as files change, so repeated analyses do not start from zero every time.
 
 ### Local dashboard prototype
 
@@ -115,12 +122,30 @@ Blueprint HUD responds with:
 - **Runtime surfaces** to verify, like auth challenge or SSE transport paths
 - **Risk signals** with explicit confidence instead of false certainty
 - A **suggested execution order** so the change can be made safely
+- A **Prompt Guardrails** block that can be copied into another AI workflow
 
 ### VS Code sidebar
 The editor-native extension panel provides the same Intent Workbench flow directly in the activity bar:
 - Analyze the **current workspace**
 - Open impacted files directly from the result list
+- Copy **Prompt Guardrails** into Copilot, Cursor, or another LLM workflow
+- Read from a persisted **workspace map** and local runtime overlays when available
 - Keep the dashboard prototype available for transport/auth debugging
+
+## Local project map
+
+Blueprint HUD stores non-committed analysis artifacts in:
+
+```text
+.blueprint-hud/
+  graph-cache.json
+  runtime-signals.json
+```
+
+- `graph-cache.json` stores the current structural map of the workspace
+- `runtime-signals.json` stores recent runtime observations when the local dashboard proxy is being used
+
+These files are local only and ignored by git.
 
 ---
 

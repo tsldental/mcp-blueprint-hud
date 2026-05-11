@@ -15,7 +15,8 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const authTracker = require('./auth-tracker');
-const { analyzeImpact } = require('./impact-engine');
+const { analyzeImpact, buildProjectGraph } = require('./impact-engine');
+const { loadProjectGraph, recordRuntimeSignal, writeProjectGraph } = require('./graph-store');
 
 const TARGET = process.env.TARGET || 'https://example.azurewebsites.net';
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -55,6 +56,7 @@ function logEntry(entry) {
   entry.ts = Date.now();
   trafficLog.unshift(entry);
   if (trafficLog.length > MAX_LOG) trafficLog.length = MAX_LOG;
+  recordRuntimeSignal(__dirname, entry);
   broadcast({ type: 'traffic', data: entry });
 }
 
@@ -72,11 +74,17 @@ app.post('/__api/impact', (req, res) => {
     return res.status(400).json({ error: 'Intent is required.' });
   }
 
+  const cachedGraph = loadProjectGraph(__dirname);
   return res.json(analyzeImpact({
     intent,
     repoRoot: __dirname,
     trafficLog,
     target: TARGET,
+    projectGraph: cachedGraph?.graph || refreshServerGraphCache(),
+    cacheStatus: {
+      source: cachedGraph ? 'persisted-cache' : 'fresh-scan',
+      updatedAt: cachedGraph?.cacheUpdatedAt || null,
+    },
   }));
 });
 
@@ -224,6 +232,7 @@ app.use((req, res, next) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
+  refreshServerGraphCache();
   console.log(`\n🔬 Blueprint HUD running`);
   console.log(`   Proxying → ${TARGET}`);
   console.log(`   Dashboard → http://localhost:${PORT}/__inspector\n`);
@@ -244,4 +253,10 @@ function sanitizeHeaders(headers) {
     }
   }
   return out;
+}
+
+function refreshServerGraphCache() {
+  const graph = buildProjectGraph(__dirname);
+  writeProjectGraph(__dirname, graph);
+  return graph;
 }
