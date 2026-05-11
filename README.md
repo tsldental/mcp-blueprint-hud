@@ -10,6 +10,7 @@ The newest layer adds:
 - a copyable **Prompt Guardrails** block for injecting architectural constraints into AI prompts
 - a ready-to-use **AI handoff brief** you can open in a markdown editor or copy directly
 - **AST-based extraction** for JS/TS-family files so imports, routes, env vars, and dynamic imports are less heuristic
+- a native **VS Code chat participant** so Blueprint HUD can inject context inside chat responses
 
 ![Blueprint HUD dashboard](./media/dashboard.png)
 
@@ -53,6 +54,23 @@ Blueprint HUD also keeps a local map on disk and refreshes it as files change, s
 After each analysis, you can:
 - **Open AI Handoff Draft** to generate a markdown brief in a new editor tab
 - **Copy AI Handoff** to move the same brief into Copilot, Cursor, or another prompt surface
+
+### VS Code chat participant
+
+Blueprint HUD now plugs into VS Code chat as **`@blueprint`**.
+
+Examples:
+
+```text
+@blueprint Change the auth flow so the dashboard requires login
+@blueprint /handoff Add a premium subscription tier
+@blueprint /plan Refactor the MCP inspector API to support roles
+```
+
+What it does:
+- analyzes the current workspace with the AST-backed HUD map
+- injects hotspots, risks, execution order, and guardrails into the chat request
+- responds inside chat with Blueprint HUD context already applied
 
 ### Local dashboard prototype
 
@@ -170,13 +188,16 @@ For other text files, it still falls back to lighter heuristic parsing where app
 
 ## Handoff workflow
 
-Blueprint HUD cannot yet inject context directly into Copilot Chat or Cursor chat input.
+Blueprint HUD now injects context directly into **its own VS Code chat participant** via `@blueprint`.
+
+It does **not yet** inject directly into every external chat surface automatically.
 
 Right now the fastest flow is:
 
-1. Run an analysis in the sidebar
-2. Click **Open handoff draft** or **Copy handoff**
-3. Paste that brief into your AI tool
+1. Use **`@blueprint`** in VS Code chat for direct HUD-backed responses
+2. Or run an analysis in the sidebar
+3. Click **Open handoff draft** or **Copy handoff**
+4. Paste that brief into another AI tool if needed
 
 You can also use the command palette:
 

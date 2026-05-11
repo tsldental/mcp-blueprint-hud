@@ -31,6 +31,7 @@ It helps a developer describe a change in plain English and immediately see:
 - The extension now produces a copyable **Prompt Guardrails** block.
 - The extension now also produces a full **AI handoff brief** and can open it in a markdown tab or copy it to the clipboard.
 - The analyzer now uses **AST-based extraction for JS/TS-family files** instead of relying only on regex matching.
+- The extension now also contributes a native VS Code chat participant: **`@blueprint`**.
 - The backend exposes `POST /__api/impact`.
 - The analysis engine lives in `impact-engine.js`.
 - Local graph and runtime persistence live in `graph-store.js`.
@@ -41,6 +42,7 @@ It helps a developer describe a change in plain English and immediately see:
 
 - `server.js` — Express proxy server and `/__api/impact` endpoint
 - `extension.js` — VS Code sidebar webview provider and workspace analysis wiring
+- `extension.js` — VS Code sidebar provider plus the `@blueprint` chat participant
 - `impact-engine.js` — repo scan + heuristic impact analysis
 - `impact-engine.js` — repo scan with AST-based JS/TS extraction plus higher-level impact analysis
 - `graph-store.js` — persisted project graph and runtime signal storage
@@ -61,15 +63,15 @@ It helps a developer describe a change in plain English and immediately see:
    - broader AST support beyond the current JS/TS-family focus
 3. The extension currently analyzes the **first workspace folder** and does not yet model multi-root workspaces.
 4. Runtime overlays are only as strong as the local signal file; most repos will start with structure-first analysis until more runtime data is available.
-5. The handoff loop is smoother now, but direct injection into Copilot/Cursor chat inputs is still not implemented.
+5. Blueprint HUD injects directly into its own VS Code chat participant, but not yet into every Copilot/Cursor chat surface automatically.
 
 ## Best next steps
 
-1. Add **direct chat-context injection** for Copilot/Cursor-style workflows instead of relying on clipboard/editor handoff.
+1. Extend the current `@blueprint` participant into more Copilot/Cursor-style chat surfaces where direct injection is supported.
 2. Improve ranking so auth changes surface `auth-tracker.js` and server routes even more reliably.
 3. Add saved analysis history, diff-aware updates, and richer navigation into affected files.
 4. Let runtime overlays ingest telemetry beyond the local proxy log.
-5. Add test coverage for `impact-engine.js`, `graph-store.js`, and extension handoff flows.
+5. Add test coverage for `impact-engine.js`, `graph-store.js`, and the chat participant flow.
 
 ## Suggested prompt to resume work
 

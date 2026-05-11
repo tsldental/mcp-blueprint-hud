@@ -5,10 +5,12 @@
   "displayName": "Blueprint HUD",
   "main": "./extension.js",
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.100.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "AI",
+    "Chat"
   ],
   "activationEvents": [
     "onView:blueprintHud.sidebar",
@@ -39,6 +41,25 @@
         }
       ]
     },
+    "chatParticipants": [
+      {
+        "id": "blueprintHud.architect",
+        "name": "blueprint",
+        "fullName": "Blueprint HUD",
+        "description": "Inject AST-backed architectural context into this chat",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "handoff",
+            "description": "Return the raw Blueprint HUD handoff brief for the current request"
+          },
+          {
+            "name": "plan",
+            "description": "Use Blueprint HUD context to produce a safer implementation plan"
+          }
+        ]
+      }
+    ],
     "commands": [
       {
         "command": "blueprintHud.focus",

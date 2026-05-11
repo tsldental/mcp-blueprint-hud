@@ -55,38 +55,7 @@ class BlueprintHudViewProvider {
   }
 
   async handleAnalyze(intent) {
-    const workspaceFolder = getPrimaryWorkspaceFolder();
-    if (!workspaceFolder) {
-      this.postMessage({
-        type: 'impactResult',
-        data: buildEmptyResult(intent || ''),
-      });
-      return;
-    }
-
-    const graphState = ensureWorkspaceGraph(workspaceFolder.uri.fsPath);
-    const runtimeSignals = loadRuntimeSignals(workspaceFolder.uri.fsPath);
-
-    const result = analyzeImpact({
-      intent,
-      repoRoot: workspaceFolder.uri.fsPath,
-      projectGraph: graphState.graph,
-      trafficLog: runtimeSignals.entries,
-      target: workspaceFolder.name,
-      cacheStatus: {
-        source: graphState.fromCache ? 'persisted-cache' : 'fresh-scan',
-        updatedAt: graphState.cacheUpdatedAt || null,
-      },
-    });
-
-    result.meta = {
-      ...result.meta,
-      workspaceName: workspaceFolder.name,
-      workspacePath: workspaceFolder.uri.fsPath,
-      runtimeLogUpdatedAt: runtimeSignals.updatedAt,
-      runtimeEntries: runtimeSignals.entries.length,
-    };
-
+    const result = computeWorkspaceAnalysis(intent || '');
     this.lastAnalysis = result;
     this.postMessage({ type: 'impactResult', data: result });
   }
@@ -588,6 +557,7 @@ function activate(context) {
     vscode.workspace.onDidRenameFiles(() => scheduleWorkspaceGraphRefresh(provider)),
   );
 
+  registerBlueprintChatParticipant(context, provider);
   scheduleWorkspaceGraphRefresh(provider);
 }
 
@@ -648,6 +618,124 @@ function buildEmptyResult(intent) {
     handoff: { markdown: '', text: '' },
     meta: { indexedFiles: 0, observedRequests: 0, observedRoutes: 0, observedRpcMethods: 0 },
   };
+}
+
+function registerBlueprintChatParticipant(context, provider) {
+  if (!vscode.chat?.createChatParticipant) return;
+
+  const participant = vscode.chat.createChatParticipant('blueprintHud.architect', async (request, chatContext, stream, token) => {
+    const result = computeWorkspaceAnalysis(request.prompt || '');
+    provider.lastAnalysis = result;
+    provider.postMessage({ type: 'impactResult', data: result });
+
+    if (request.command === 'handoff') {
+      stream.markdown(result.handoff.markdown || 'No handoff generated.');
+      appendParticipantButtons(stream);
+      return { metadata: { command: 'handoff' } };
+    }
+
+    if (!request.model) {
+      stream.markdown(result.handoff.markdown || result.guardrails.promptBlock || 'No Blueprint HUD context available.');
+      appendParticipantButtons(stream);
+      return { metadata: { command: request.command || 'fallback' } };
+    }
+
+    const messages = buildChatMessages(request, chatContext, result);
+    const response = await request.model.sendRequest(messages, {}, token);
+
+    stream.progress('Blueprint HUD is applying AST-backed architectural context...');
+    for await (const fragment of response.text) {
+      stream.markdown(fragment);
+    }
+
+    stream.markdown('\n\n---\n**Blueprint HUD injected:** AST-backed hotspots, risks, execution order, and guardrails from the current workspace.');
+    appendParticipantButtons(stream);
+    return { metadata: { command: request.command || 'chat' } };
+  });
+
+  participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'blueprint-hud-icon.svg');
+  participant.followupProvider = {
+    provideFollowups(_result, _context, _token) {
+      return [
+        { prompt: 'Give me the raw Blueprint HUD handoff for this change', label: 'Show raw handoff', command: 'handoff' },
+        { prompt: 'Turn this Blueprint HUD context into a safer implementation plan', label: 'Create safer plan', command: 'plan' },
+      ];
+    },
+  };
+
+  context.subscriptions.push(participant);
+}
+
+function computeWorkspaceAnalysis(intent) {
+  const workspaceFolder = getPrimaryWorkspaceFolder();
+  if (!workspaceFolder) return buildEmptyResult(intent);
+
+  const graphState = ensureWorkspaceGraph(workspaceFolder.uri.fsPath);
+  const runtimeSignals = loadRuntimeSignals(workspaceFolder.uri.fsPath);
+
+  const result = analyzeImpact({
+    intent,
+    repoRoot: workspaceFolder.uri.fsPath,
+    projectGraph: graphState.graph,
+    trafficLog: runtimeSignals.entries,
+    target: workspaceFolder.name,
+    cacheStatus: {
+      source: graphState.fromCache ? 'persisted-cache' : 'fresh-scan',
+      updatedAt: graphState.cacheUpdatedAt || null,
+    },
+  });
+
+  result.meta = {
+    ...result.meta,
+    workspaceName: workspaceFolder.name,
+    workspacePath: workspaceFolder.uri.fsPath,
+    runtimeLogUpdatedAt: runtimeSignals.updatedAt,
+    runtimeEntries: runtimeSignals.entries.length,
+  };
+
+  return result;
+}
+
+function buildChatMessages(request, chatContext, result) {
+  const messages = [];
+  const systemPrompt = [
+    'You are Blueprint HUD, an architecture-aware coding copilot.',
+    'Use the injected HUD context as the source of truth for likely blast radius, risk, and execution order.',
+    'Prefer precise, risk-aware guidance over broad generic advice.',
+    'If the HUD context shows uncertainty, say so clearly rather than overstating certainty.',
+  ].join(' ');
+
+  messages.push(vscode.LanguageModelChatMessage.User(systemPrompt));
+  messages.push(vscode.LanguageModelChatMessage.User(result.handoff.markdown));
+
+  const previousMessages = chatContext.history.filter((item) => item instanceof vscode.ChatResponseTurn);
+  previousMessages.forEach((turn) => {
+    let combined = '';
+    turn.response.forEach((part) => {
+      if (part instanceof vscode.ChatResponseMarkdownPart) combined += part.value.value;
+    });
+    if (combined) messages.push(vscode.LanguageModelChatMessage.Assistant(combined));
+  });
+
+  const prompt = request.command === 'plan'
+    ? `Using the Blueprint HUD handoff above, produce a safe, ordered implementation plan for: ${request.prompt}`
+    : `Using the Blueprint HUD handoff above, answer this request with the injected architectural context: ${request.prompt}`;
+
+  messages.push(vscode.LanguageModelChatMessage.User(prompt));
+  return messages;
+}
+
+function appendParticipantButtons(stream) {
+  stream.button({
+    command: 'blueprintHud.openHandoffDraft',
+    title: 'Open AI Handoff Draft',
+    arguments: [],
+  });
+  stream.button({
+    command: 'blueprintHud.copyHandoff',
+    title: 'Copy AI Handoff',
+    arguments: [],
+  });
 }
 
 function getPrimaryWorkspaceFolder() {
