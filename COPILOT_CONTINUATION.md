@@ -29,6 +29,7 @@ It helps a developer describe a change in plain English and immediately see:
 - The extension now persists a local workspace map in `.blueprint-hud/graph-cache.json`.
 - The dashboard/runtime layer now records runtime overlays in `.blueprint-hud/runtime-signals.json`.
 - The extension now produces a copyable **Prompt Guardrails** block.
+- The extension now also produces a full **AI handoff brief** and can open it in a markdown tab or copy it to the clipboard.
 - The backend exposes `POST /__api/impact`.
 - The analysis engine lives in `impact-engine.js`.
 - Local graph and runtime persistence live in `graph-store.js`.
@@ -57,14 +58,15 @@ It helps a developer describe a change in plain English and immediately see:
    - confidence tuning to reduce noisy matches
 3. The extension currently analyzes the **first workspace folder** and does not yet model multi-root workspaces.
 4. Runtime overlays are only as strong as the local signal file; most repos will start with structure-first analysis until more runtime data is available.
+5. The handoff loop is smoother now, but direct injection into Copilot/Cursor chat inputs is still not implemented.
 
 ## Best next steps
 
-1. Add **Cursor / Copilot-compatible editor integration** or an MCP-backed bridge for the same panel experience.
+1. Add **direct chat-context injection** for Copilot/Cursor-style workflows instead of relying on clipboard/editor handoff.
 2. Improve ranking so auth changes surface `auth-tracker.js` and server routes even more reliably.
 3. Add saved analysis history, diff-aware updates, and richer navigation into affected files.
 4. Let runtime overlays ingest telemetry beyond the local proxy log.
-5. Add test coverage for `impact-engine.js` and `graph-store.js`.
+5. Add test coverage for `impact-engine.js`, `graph-store.js`, and extension handoff flows.
 
 ## Suggested prompt to resume work
 

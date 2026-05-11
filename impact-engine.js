@@ -70,6 +70,7 @@ function analyzeImpact({ intent, repoRoot, trafficLog = [], target, projectGraph
       risks: [],
       plan: [],
       guardrails: { bullets: [], promptBlock: '' },
+      handoff: { markdown: '', text: '' },
       meta: buildMeta(trafficLog, { files: [], runtimeSurfaces: [] }, target, cacheStatus),
     };
   }
@@ -86,6 +87,7 @@ function analyzeImpact({ intent, repoRoot, trafficLog = [], target, projectGraph
   const plan = buildPlan(concerns, impacts, runtime);
   const confidenceScore = computeConfidenceScore(snapshot, trafficLog, impacts, runtime, concerns);
   const guardrails = buildGuardrails(normalizedIntent, concerns, impacts, runtime, risks);
+  const handoff = buildAiHandoff(normalizedIntent, concerns, impacts, runtime, risks, plan, guardrails, confidenceScore);
 
   return {
     intent: normalizedIntent,
@@ -101,6 +103,7 @@ function analyzeImpact({ intent, repoRoot, trafficLog = [], target, projectGraph
     risks,
     plan,
     guardrails,
+    handoff,
     meta: buildMeta(trafficLog, snapshot, target, cacheStatus),
   };
 }
@@ -552,6 +555,50 @@ function buildGuardrails(intent, concerns, impacts, runtime, risks) {
   };
 }
 
+function buildAiHandoff(intent, concerns, impacts, runtime, risks, plan, guardrails, confidenceScore) {
+  const brittle = impacts.highConfidence;
+  const affected = [...impacts.possibleImpact, ...runtime.highConfidence, ...runtime.possibleImpact];
+  const watchlist = [...impacts.unknowns, ...runtime.unknowns];
+
+  const sections = [
+    '# Blueprint HUD AI Handoff',
+    '',
+    `## Intent`,
+    intent,
+    '',
+    '## HUD Summary',
+    `- ${buildHeadline(intent, impacts, runtime)}`,
+    `- ${buildNarrative(concerns, impacts, runtime, confidenceScore)}`,
+    '',
+    renderListSection('## Brittleness Hotspots', brittle.map(item => `${item.title} — ${item.reason}`)),
+    renderListSection('## Affected Surfaces', affected.map(item => `${item.title} — ${item.reason}`)),
+    renderListSection('## Watchlist', watchlist.map(item => `${item.title} — ${item.reason}`)),
+    renderListSection('## Risk Signals', risks.map(risk => `[${risk.level}] ${risk.title} — ${risk.detail}`)),
+    renderListSection('## Suggested Execution Order', plan),
+    '## Architecture Guardrails',
+    '```text',
+    guardrails.promptBlock || '',
+    '```',
+    '',
+    '## Instruction To AI',
+    'Use the intent, hotspots, risks, and guardrails above to plan or implement the change. Preserve existing behavior unless the intent explicitly requires a change, and call out any uncertainty before making irreversible edits.',
+  ].filter(Boolean);
+
+  return {
+    markdown: sections.join('\n'),
+    text: [
+      `Blueprint HUD AI handoff`,
+      `Intent: ${intent}`,
+      '',
+      guardrails.promptBlock,
+      '',
+      `Brittle hotspots: ${brittle.map(item => item.title).join(', ') || 'none detected'}`,
+      `Affected surfaces: ${affected.map(item => item.title).join(', ') || 'none detected'}`,
+      `Execution order: ${plan.join(' | ') || 'none yet'}`,
+    ].join('\n'),
+  };
+}
+
 function buildHeadline(intent, impacts, runtime) {
   const total = impacts.highConfidence.length + runtime.highConfidence.length;
   if (!total) return `No high-confidence impact map yet for "${intent}".`;
@@ -610,6 +657,11 @@ function scoreToZone(score) {
   if (score >= 70) return 'brittle';
   if (score >= 40) return 'affected';
   return 'watch';
+}
+
+function renderListSection(title, items) {
+  if (!items.length) return '';
+  return [title, ...items.map(item => `- ${item}`), ''].join('\n');
 }
 
 function tokenize(value) {

@@ -13,6 +13,8 @@
   "activationEvents": [
     "onView:blueprintHud.sidebar",
     "onCommand:blueprintHud.focus",
+    "onCommand:blueprintHud.openHandoffDraft",
+    "onCommand:blueprintHud.copyHandoff",
     "onCommand:blueprintHud.openDashboard"
   ],
   "scripts": {
@@ -41,6 +43,14 @@
       {
         "command": "blueprintHud.focus",
         "title": "Blueprint HUD: Focus Sidebar"
+      },
+      {
+        "command": "blueprintHud.openHandoffDraft",
+        "title": "Blueprint HUD: Open AI Handoff Draft"
+      },
+      {
+        "command": "blueprintHud.copyHandoff",
+        "title": "Blueprint HUD: Copy AI Handoff"
       },
       {
         "command": "blueprintHud.openDashboard",

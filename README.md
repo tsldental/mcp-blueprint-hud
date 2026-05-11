@@ -8,6 +8,7 @@ The newest layer adds:
 - a **persisted local project map**
 - optional **runtime overlays** from observed traffic
 - a copyable **Prompt Guardrails** block for injecting architectural constraints into AI prompts
+- a ready-to-use **AI handoff brief** you can open in a markdown editor or copy directly
 
 ![Blueprint HUD dashboard](./media/dashboard.png)
 
@@ -47,6 +48,10 @@ Add a login requirement to the dashboard
 The extension analyzes the **currently opened workspace** and shows likely file impact, runtime pressure, risk signals, and a suggested execution order. Click a file in the results to open it.
 
 Blueprint HUD also keeps a local map on disk and refreshes it as files change, so repeated analyses do not start from zero every time.
+
+After each analysis, you can:
+- **Open AI Handoff Draft** to generate a markdown brief in a new editor tab
+- **Copy AI Handoff** to move the same brief into Copilot, Cursor, or another prompt surface
 
 ### Local dashboard prototype
 
@@ -123,12 +128,14 @@ Blueprint HUD responds with:
 - **Risk signals** with explicit confidence instead of false certainty
 - A **suggested execution order** so the change can be made safely
 - A **Prompt Guardrails** block that can be copied into another AI workflow
+- A full **AI Handoff** brief that bundles intent, hotspots, risks, order, and guardrails
 
 ### VS Code sidebar
 The editor-native extension panel provides the same Intent Workbench flow directly in the activity bar:
 - Analyze the **current workspace**
 - Open impacted files directly from the result list
 - Copy **Prompt Guardrails** into Copilot, Cursor, or another LLM workflow
+- Open or copy an **AI Handoff** brief for the next AI step
 - Read from a persisted **workspace map** and local runtime overlays when available
 - Keep the dashboard prototype available for transport/auth debugging
 
@@ -146,6 +153,21 @@ Blueprint HUD stores non-committed analysis artifacts in:
 - `runtime-signals.json` stores recent runtime observations when the local dashboard proxy is being used
 
 These files are local only and ignored by git.
+
+## Handoff workflow
+
+Blueprint HUD cannot yet inject context directly into Copilot Chat or Cursor chat input.
+
+Right now the fastest flow is:
+
+1. Run an analysis in the sidebar
+2. Click **Open handoff draft** or **Copy handoff**
+3. Paste that brief into your AI tool
+
+You can also use the command palette:
+
+- `Blueprint HUD: Open AI Handoff Draft`
+- `Blueprint HUD: Copy AI Handoff`
 
 ---
 

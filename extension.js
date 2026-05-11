@@ -9,6 +9,7 @@ class BlueprintHudViewProvider {
   constructor(extensionUri) {
     this.extensionUri = extensionUri;
     this.view = null;
+    this.lastAnalysis = null;
   }
 
   resolveWebviewView(webviewView) {
@@ -35,6 +36,12 @@ class BlueprintHudViewProvider {
           break;
         case 'copyGuardrails':
           await this.handleCopyGuardrails(message.text);
+          break;
+        case 'copyHandoff':
+          await this.handleCopyHandoff(message.text);
+          break;
+        case 'openHandoff':
+          await this.handleOpenHandoff(message.text);
           break;
         case 'openDashboard':
           await vscode.env.openExternal(vscode.Uri.parse('http://localhost:3000/__inspector'));
@@ -80,6 +87,7 @@ class BlueprintHudViewProvider {
       runtimeEntries: runtimeSignals.entries.length,
     };
 
+    this.lastAnalysis = result;
     this.postMessage({ type: 'impactResult', data: result });
   }
 
@@ -100,6 +108,21 @@ class BlueprintHudViewProvider {
     if (!text) return;
     await vscode.env.clipboard.writeText(text);
     vscode.window.setStatusBarMessage('Blueprint HUD guardrails copied', 2500);
+  }
+
+  async handleCopyHandoff(text) {
+    if (!text) return;
+    await vscode.env.clipboard.writeText(text);
+    vscode.window.setStatusBarMessage('Blueprint HUD AI handoff copied', 2500);
+  }
+
+  async handleOpenHandoff(text) {
+    if (!text) return;
+    const document = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content: text,
+    });
+    await vscode.window.showTextDocument(document, { preview: false });
   }
 
   postWorkspaceContext() {
@@ -124,6 +147,10 @@ class BlueprintHudViewProvider {
 
   postMessage(message) {
     if (this.view) this.view.webview.postMessage(message);
+  }
+
+  getLastHandoffMarkdown() {
+    return this.lastAnalysis?.handoff?.markdown || '';
   }
 
   getHtml(webview) {
@@ -229,7 +256,7 @@ class BlueprintHudViewProvider {
       border: none;
       color: var(--blue);
     }
-    .example-row, .meta-row, .badge-row {
+    .example-row, .meta-row, .badge-row, .action-row {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
@@ -319,7 +346,7 @@ class BlueprintHudViewProvider {
       <div class="title">Blueprint HUD</div>
       <span id="confidence" class="badge badge-muted">No analysis</span>
     </div>
-    <div class="muted">Describe a change in plain English and see likely ripple effects, runtime pressure, and prompt guardrails for the current workspace.</div>
+    <div class="muted">Describe a change in plain English and see likely ripple effects, runtime pressure, prompt guardrails, and an AI-ready handoff brief for the current workspace.</div>
     <div id="workspace" class="workspace muted">No workspace open.</div>
     <textarea id="intent" placeholder="Add a premium subscription tier to checkout"></textarea>
     <div class="example-row">
@@ -373,6 +400,18 @@ class BlueprintHudViewProvider {
       const guardrailTrigger = event.target.closest('[data-copy-guardrails]');
       if (guardrailTrigger) {
         vscode.postMessage({ type: 'copyGuardrails', text: guardrailTrigger.dataset.copyGuardrails });
+        return;
+      }
+
+      const handoffCopyTrigger = event.target.closest('[data-copy-handoff]');
+      if (handoffCopyTrigger) {
+        vscode.postMessage({ type: 'copyHandoff', text: handoffCopyTrigger.dataset.copyHandoff });
+        return;
+      }
+
+      const handoffOpenTrigger = event.target.closest('[data-open-handoff]');
+      if (handoffOpenTrigger) {
+        vscode.postMessage({ type: 'openHandoff', text: handoffOpenTrigger.dataset.openHandoff });
       }
     });
 
@@ -404,6 +443,7 @@ class BlueprintHudViewProvider {
       sections.push(renderHeatSection('Affected surfaces', affected, 'affected'));
       sections.push(renderHeatSection('Watchlist', watch, 'watch'));
       sections.push(renderGuardrails(result.guardrails));
+      sections.push(renderHandoff(result.handoff));
       sections.push(renderRisks(result.risks || []));
       sections.push(renderPlan(result.plan || []));
 
@@ -454,6 +494,14 @@ class BlueprintHudViewProvider {
       }
 
       return '<div class="section"><div class="row-between"><div class="section-title">Prompt guardrails</div><button data-copy-guardrails="' + escapeHtml(guardrails.promptBlock) + '">Copy guardrails</button></div><div class="guardrail-box"><pre>' + escapeHtml(guardrails.promptBlock) + '</pre></div></div>';
+    }
+
+    function renderHandoff(handoff) {
+      if (!handoff?.markdown) {
+        return '<div class="section"><div class="section-title">AI handoff</div><div class="empty">Run an analysis to generate a ready-to-use handoff brief.</div></div>';
+      }
+
+      return '<div class="section"><div class="row-between"><div class="section-title">AI handoff</div><div class="action-row"><button data-open-handoff="' + escapeHtml(handoff.markdown) + '">Open handoff draft</button><button data-copy-handoff="' + escapeHtml(handoff.text || handoff.markdown) + '">Copy handoff</button></div></div><div class="guardrail-box"><pre>' + escapeHtml(handoff.markdown) + '</pre></div></div>';
     }
 
     function renderRisks(risks) {
@@ -514,6 +562,22 @@ function activate(context) {
     vscode.window.registerWebviewViewProvider('blueprintHud.sidebar', provider),
     vscode.commands.registerCommand('blueprintHud.focus', async () => {
       await vscode.commands.executeCommand('workbench.view.extension.blueprintHud');
+    }),
+    vscode.commands.registerCommand('blueprintHud.openHandoffDraft', async () => {
+      const markdown = provider.getLastHandoffMarkdown();
+      if (!markdown) {
+        vscode.window.showInformationMessage('Run a Blueprint HUD analysis first to generate an AI handoff.');
+        return;
+      }
+      await provider.handleOpenHandoff(markdown);
+    }),
+    vscode.commands.registerCommand('blueprintHud.copyHandoff', async () => {
+      const markdown = provider.getLastHandoffMarkdown();
+      if (!markdown) {
+        vscode.window.showInformationMessage('Run a Blueprint HUD analysis first to generate an AI handoff.');
+        return;
+      }
+      await provider.handleCopyHandoff(markdown);
     }),
     vscode.commands.registerCommand('blueprintHud.openDashboard', async () => {
       await vscode.env.openExternal(vscode.Uri.parse('http://localhost:3000/__inspector'));
@@ -581,6 +645,7 @@ function buildEmptyResult(intent) {
     risks: [],
     plan: [],
     guardrails: { bullets: [], promptBlock: '' },
+    handoff: { markdown: '', text: '' },
     meta: { indexedFiles: 0, observedRequests: 0, observedRoutes: 0, observedRpcMethods: 0 },
   };
 }
