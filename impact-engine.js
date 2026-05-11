@@ -1,8 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const babelParser = require('@babel/parser');
 
-const TEXT_EXTENSIONS = new Set(['.js', '.json', '.md', '.html', '.css', '.txt', '.yml', '.yaml']);
+const TEXT_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.json', '.md', '.html', '.css', '.txt', '.yml', '.yaml']);
 const EXCLUDED_DIRS = new Set(['.git', 'node_modules', 'media']);
+const AST_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx']);
+const ROUTE_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'use']);
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'how', 'i', 'if',
   'in', 'into', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'so', 'that', 'the', 'this',
@@ -153,14 +156,15 @@ function walk(root, currentDir, files, runtimeSurfaces, links) {
 
     const relativePath = path.relative(root, absolutePath).replace(/\\/g, '/');
     const content = fs.readFileSync(absolutePath, 'utf8');
+    const structuralData = extractStructuralData(relativePath, extension, content);
     const tokenSet = new Set(tokenize(`${relativePath} ${content}`));
     const metadata = {
       path: relativePath,
       extension,
       tokens: Array.from(tokenSet),
-      routes: extractRoutes(content),
-      envVars: extractEnvVars(content),
-      imports: extractImports(relativePath, content),
+      routes: structuralData.routes,
+      envVars: structuralData.envVars,
+      imports: structuralData.imports,
       score: 0,
       reasons: [],
       related: [],
@@ -189,7 +193,20 @@ function walk(root, currentDir, files, runtimeSurfaces, links) {
   }
 }
 
-function extractRoutes(content) {
+function extractStructuralData(relativePath, extension, content) {
+  if (AST_EXTENSIONS.has(extension)) {
+    const astData = extractAstStructuralData(relativePath, content);
+    if (astData) return astData;
+  }
+
+  return {
+    routes: extractRoutesRegex(content),
+    envVars: extractEnvVarsRegex(content),
+    imports: extractImportsRegex(relativePath, content),
+  };
+}
+
+function extractRoutesRegex(content) {
   const matches = [];
   const routeRegex = /\bapp\.(get|post|put|patch|delete|use)\(\s*['"`]([^'"`]+)['"`]/g;
   const wsRegex = /WebSocketServer\(\{\s*server,\s*path:\s*['"`]([^'"`]+)['"`]/g;
@@ -205,7 +222,7 @@ function extractRoutes(content) {
   return matches;
 }
 
-function extractEnvVars(content) {
+function extractEnvVarsRegex(content) {
   const vars = new Set();
   const envRegex = /process\.env\.([A-Z0-9_]+)/g;
   let match;
@@ -215,7 +232,7 @@ function extractEnvVars(content) {
   return Array.from(vars);
 }
 
-function extractImports(relativePath, content) {
+function extractImportsRegex(relativePath, content) {
   const imports = new Set();
   const regex = /(?:require\(|from\s+|src=|href=)['"`](\.{1,2}\/[^'"`]+)['"`]/g;
   let match;
@@ -227,7 +244,151 @@ function extractImports(relativePath, content) {
   return Array.from(imports).filter(Boolean);
 }
 
+function extractAstStructuralData(relativePath, content) {
+  let ast;
+
+  try {
+    ast = babelParser.parse(content, {
+      sourceType: 'unambiguous',
+      errorRecovery: true,
+      plugins: [
+        'jsx',
+        'typescript',
+        'dynamicImport',
+        'classProperties',
+        'classPrivateProperties',
+        'classPrivateMethods',
+        'optionalChaining',
+        'nullishCoalescingOperator',
+        'decorators-legacy',
+        'topLevelAwait',
+      ],
+    });
+  } catch {
+    return null;
+  }
+
+  const imports = new Set();
+  const routes = [];
+  const envVars = new Set();
+
+  visitAst(ast, (node) => {
+    if (!node || typeof node.type !== 'string') return;
+
+    if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || node.type === 'ExportNamedDeclaration') {
+      const sourceValue = getStringLiteralValue(node.source);
+      if (sourceValue) imports.add(resolveImport(relativePath, sourceValue));
+    }
+
+    if (node.type === 'CallExpression') {
+      const callee = node.callee;
+      if (callee?.type === 'Import' && node.arguments?.length) {
+        const sourceValue = getStringLiteralValue(node.arguments[0]);
+        if (sourceValue) imports.add(resolveImport(relativePath, sourceValue));
+      }
+
+      if (callee?.type === 'Identifier' && callee.name === 'require' && node.arguments?.length) {
+        const sourceValue = getStringLiteralValue(node.arguments[0]);
+        if (sourceValue) imports.add(resolveImport(relativePath, sourceValue));
+      }
+
+      if (callee?.type === 'MemberExpression' && !callee.computed) {
+        const objectName = getIdentifierName(callee.object);
+        const propertyName = getPropertyName(callee.property);
+        if (objectName === 'app' && ROUTE_METHODS.has(propertyName)) {
+          const routeValue = getStringLiteralValue(node.arguments?.[0]);
+          if (routeValue) routes.push({ kind: 'route', value: routeValue });
+        }
+      }
+    }
+
+    if (node.type === 'NewExpression' && getIdentifierName(node.callee) === 'WebSocketServer') {
+      const pathValue = extractObjectPropertyString(node.arguments?.[0], 'path');
+      if (pathValue) routes.push({ kind: 'websocket', value: pathValue });
+    }
+
+    const envVar = extractEnvVarName(node);
+    if (envVar) envVars.add(envVar);
+  });
+
+  return {
+    imports: Array.from(imports).filter(Boolean),
+    routes,
+    envVars: Array.from(envVars),
+  };
+}
+
+function visitAst(node, visitor) {
+  if (!node || typeof node !== 'object') return;
+  visitor(node);
+
+  for (const value of Object.values(node)) {
+    if (!value) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) visitAst(item, visitor);
+      continue;
+    }
+    if (typeof value === 'object' && typeof value.type === 'string') {
+      visitAst(value, visitor);
+    }
+  }
+}
+
+function getStringLiteralValue(node) {
+  if (!node) return null;
+  if (node.type === 'StringLiteral' || node.type === 'Literal') return typeof node.value === 'string' ? node.value : null;
+  if (node.type === 'TemplateLiteral' && node.expressions?.length === 0 && node.quasis?.length === 1) {
+    return node.quasis[0].value?.cooked || null;
+  }
+  return null;
+}
+
+function getIdentifierName(node) {
+  if (!node) return null;
+  if (node.type === 'Identifier') return node.name;
+  if (node.type === 'ThisExpression') return 'this';
+  return null;
+}
+
+function getPropertyName(node) {
+  if (!node) return null;
+  if (node.type === 'Identifier') return node.name;
+  if (node.type === 'StringLiteral' || node.type === 'Literal') return typeof node.value === 'string' ? node.value : null;
+  return null;
+}
+
+function extractObjectPropertyString(node, propertyName) {
+  if (!node || node.type !== 'ObjectExpression') return null;
+  for (const property of node.properties || []) {
+    if (property.type !== 'ObjectProperty' && property.type !== 'Property') continue;
+    const keyName = getPropertyName(property.key);
+    if (keyName !== propertyName) continue;
+    return getStringLiteralValue(property.value);
+  }
+  return null;
+}
+
+function extractEnvVarName(node) {
+  if (!node || node.type !== 'MemberExpression' || node.computed) return null;
+  const objectNode = node.object;
+  const propertyName = getPropertyName(node.property);
+  if (!propertyName) return null;
+
+  if (
+    objectNode?.type === 'MemberExpression' &&
+    !objectNode.computed &&
+    getIdentifierName(objectNode.object) === 'process' &&
+    getPropertyName(objectNode.property) === 'env'
+  ) {
+    return propertyName;
+  }
+
+  return null;
+}
+
 function resolveImport(relativePath, importPath) {
+  if (!importPath || (!importPath.startsWith('./') && !importPath.startsWith('../'))) return null;
+
   const baseDir = path.posix.dirname(relativePath);
   const resolved = path.posix.normalize(path.posix.join(baseDir, importPath));
 

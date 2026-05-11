@@ -30,6 +30,7 @@ It helps a developer describe a change in plain English and immediately see:
 - The dashboard/runtime layer now records runtime overlays in `.blueprint-hud/runtime-signals.json`.
 - The extension now produces a copyable **Prompt Guardrails** block.
 - The extension now also produces a full **AI handoff brief** and can open it in a markdown tab or copy it to the clipboard.
+- The analyzer now uses **AST-based extraction for JS/TS-family files** instead of relying only on regex matching.
 - The backend exposes `POST /__api/impact`.
 - The analysis engine lives in `impact-engine.js`.
 - Local graph and runtime persistence live in `graph-store.js`.
@@ -41,6 +42,7 @@ It helps a developer describe a change in plain English and immediately see:
 - `server.js` — Express proxy server and `/__api/impact` endpoint
 - `extension.js` — VS Code sidebar webview provider and workspace analysis wiring
 - `impact-engine.js` — repo scan + heuristic impact analysis
+- `impact-engine.js` — repo scan with AST-based JS/TS extraction plus higher-level impact analysis
 - `graph-store.js` — persisted project graph and runtime signal storage
 - `auth-tracker.js` — auth flow state tracking
 - `public/index.html` — dashboard structure
@@ -56,6 +58,7 @@ It helps a developer describe a change in plain English and immediately see:
    - route-to-file correlation
    - runtime evidence from real traffic
    - confidence tuning to reduce noisy matches
+   - broader AST support beyond the current JS/TS-family focus
 3. The extension currently analyzes the **first workspace folder** and does not yet model multi-root workspaces.
 4. Runtime overlays are only as strong as the local signal file; most repos will start with structure-first analysis until more runtime data is available.
 5. The handoff loop is smoother now, but direct injection into Copilot/Cursor chat inputs is still not implemented.

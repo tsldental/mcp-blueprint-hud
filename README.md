@@ -9,6 +9,7 @@ The newest layer adds:
 - optional **runtime overlays** from observed traffic
 - a copyable **Prompt Guardrails** block for injecting architectural constraints into AI prompts
 - a ready-to-use **AI handoff brief** you can open in a markdown editor or copy directly
+- **AST-based extraction** for JS/TS-family files so imports, routes, env vars, and dynamic imports are less heuristic
 
 ![Blueprint HUD dashboard](./media/dashboard.png)
 
@@ -153,6 +154,19 @@ Blueprint HUD stores non-committed analysis artifacts in:
 - `runtime-signals.json` stores recent runtime observations when the local dashboard proxy is being used
 
 These files are local only and ignored by git.
+
+## Analyzer coverage
+
+Blueprint HUD now uses AST-based extraction for:
+
+- `.js`
+- `.cjs`
+- `.mjs`
+- `.ts`
+- `.tsx`
+- `.jsx`
+
+For other text files, it still falls back to lighter heuristic parsing where appropriate.
 
 ## Handoff workflow
 
